@@ -59,6 +59,10 @@
   let leaving = false;
   let prevTurnMine = false;
   let banner = '';
+  let selectedCard = null;  // the card string behind `selected`
+  let deadlineAt = null;    // local clock time when the current turn ends
+  let turnTimer = null;     // host only
+  let overHidden = false;
 
   // ---------- HOME ----------
   function renderHome(msg) {
@@ -106,6 +110,8 @@
     banner = '';
     if (resumeSave) {
       room = resumeSave.room; S = resumeSave.state; myToken = resumeSave.token; setSessionToken(myToken);
+      if (S.timer === undefined) S.timer = 0;
+      S.deadline = null;
     } else {
       room = rnd(5); S = G.newLobby(room, myToken, name);
     }
@@ -127,7 +133,7 @@
     const p = newPeer(PEER_PREFIX + room);
     clearTimeout(openTimer); lastPeerErr = '';
     openTimer = setTimeout(() => { if (!p.open && !leaving) netFail(); }, 12000);
-    p.on('open', () => { clearTimeout(openTimer); S.room = room; saveHost(); refreshView(); });
+    p.on('open', () => { clearTimeout(openTimer); S.room = room; armTimer(); saveHost(); refreshView(); });
     p.on('connection', onHostConnection);
     p.on('disconnected', () => { if (!leaving && peer === p) setTimeout(() => { try { p.reconnect(); } catch (e) { /* ignore */ } }, 1500); });
     p.on('error', (e) => {
@@ -174,6 +180,19 @@
     if (res && !res.ok && res.error) conn.send({ t: 'toast', msg: res.error });
   }
 
+  // host-enforced turn timer: when it runs out the server plays a random legal move for that player
+  function armTimer() {
+    clearTimeout(turnTimer);
+    if (!S || S.phase !== 'playing' || !S.timer) { if (S) S.deadline = null; return; }
+    if (!S.deadline) S.deadline = Date.now() + S.timer * 1000;
+    const ms = Math.max(0, S.deadline - Date.now());
+    turnTimer = setTimeout(() => {
+      if (!S || S.phase !== 'playing') return;
+      G.autoMove(S);
+      armTimer(); saveHost(); broadcast();
+    }, ms + 60);
+  }
+
   // keep the team count valid as players come and go (3 players -> 3 solo teams)
   function autoTeams() {
     if (!S || S.phase !== 'lobby') return;
@@ -196,6 +215,9 @@
       case 'teams':
         if (!isHost || S.phase !== 'lobby') return { ok: false, error: 'Only the host can do that' };
         S.teams = m.n === 3 ? 3 : 2; break;
+      case 'timer':
+        if (!isHost || S.phase !== 'lobby') return { ok: false, error: 'Only the host can do that' };
+        S.timer = [0, 20, 30, 45, 60].includes(m.n) ? m.n : 20; break;
       case 'start':
         if (!isHost || S.phase !== 'lobby') return { ok: false, error: 'Only the host can start' };
         res = G.startGame(S); break;
@@ -216,7 +238,7 @@
         break;
       default: return { ok: false, error: 'Unknown action' };
     }
-    if (res.ok) { autoTeams(); saveHost(); broadcast(); }
+    if (res.ok) { autoTeams(); armTimer(); saveHost(); broadcast(); }
     return res;
   }
 
@@ -293,7 +315,8 @@
   function cleanupNet() {
     clearTimeout(reconnectTimer); clearTimeout(connectTimeout);
     try { peer && peer.destroy(); } catch (e) { /* ignore */ }
-    peer = null; hostConn = null; conns = {}; connected = {}; V = null; selected = null; banner = '';
+    clearTimeout(turnTimer);
+    peer = null; hostConn = null; conns = {}; connected = {}; V = null; selected = null; selectedCard = null; deadlineAt = null; banner = '';
     closeModal();
     document.title = 'Sequence Online';
   }
@@ -312,8 +335,8 @@
     const mineNow = v.phase === 'playing' && v.turn === v.you;
     if (mineNow && !prevTurnMine) { try { navigator.vibrate && navigator.vibrate([120, 60, 120]); } catch (e) { /* ignore */ } }
     prevTurnMine = mineNow;
-    if (!mineNow) selected = null;
-    if (V && V.hand.length !== v.hand.length) selected = null;
+    if (selected !== null && v.hand[selected] !== selectedCard) selected = null;
+    deadlineAt = v.phase === 'playing' && v.timer && v.deadlineIn !== null ? Date.now() + v.deadlineIn : null;
     V = v;
     document.title = mineNow ? '● Your turn — Sequence' : 'Sequence Online';
     render();
@@ -321,7 +344,8 @@
   function render() {
     if (!V) return;
     if (V.phase === 'lobby') renderLobby(); else renderGame();
-    if (V.phase === 'over') showOver(); else if ($modal.dataset.kind === 'over') closeModal();
+    if (V.phase === 'over') showOver();
+    else { overHidden = false; if ($modal.dataset.kind === 'over') closeModal(); }
   }
 
   // ---------- LOBBY ----------
@@ -359,7 +383,11 @@
               <button data-a="teams" data-n="2" class="${v.teams === 2 ? 'on-seg' : ''}">2 teams</button>
               <button data-a="teams" data-n="3" class="${v.teams === 3 ? 'on-seg' : ''}">3 teams</button>
             </div>
-            <div class="note" style="margin-top:8px">Players take turns in join order and are split into teams alternately (Blue, Green, Red…).</div>
+            <label style="display:block;margin-top:12px">Turn timer</label>
+            <div class="seg" style="margin-top:6px">
+              ${[[0, 'Off'], [20, '20s'], [30, '30s'], [45, '45s'], [60, '60s']].map(([n, t]) => `<button data-a="timer" data-n="${n}" class="${v.timer === n ? 'on-seg' : ''}">${t}</button>`).join('')}
+            </div>
+            <div class="note" style="margin-top:8px">If the timer runs out, a random move is played for that player.<br>Players take turns in join order and are split into teams alternately (Blue, Green, Red…).</div>
           </div>
           <div class="note" style="text-align:center">${esc(hint)}</div>
           <button class="btn primary" data-a="start" ${n >= 2 && okTeams ? '' : 'disabled'}>Start game</button>`
@@ -369,80 +397,133 @@
   }
 
   // ---------- GAME ----------
+  const cellLabel = (i) => (G.BOARD[i] === 'F' ? '★' : G.fmt(G.BOARD[i]));
+  const posText = (i) => `row ${Math.floor(i / 10) + 1}, col ${(i % 10) + 1}`;
+  function miniCard(c) {
+    const s = G.suitOf(c);
+    return `<span class="mini ${s === 'H' || s === 'D' ? 'red' : ''} ${G.jackKind(c) ? 'jack' : ''}"><b>${G.rankOf(c)}</b>${G.GLYPH[s]}</span>`;
+  }
+  function lastMoveHTML(v) {
+    const l = v.last;
+    if (!l || !v.players[l.seat]) return '<button class="lm" data-a="history"><span class="lmt">Game started — first move!</span></button>';
+    const pl = v.players[l.seat];
+    const who = `<span class="dot t${pl.team}"></span><b>${esc(pl.name)}</b>`;
+    const auto = l.auto ? '<span class="auto">⏱ time up</span>' : '';
+    let txt = '';
+    if (l.type === 'place') {
+      txt = `${miniCard(l.card)} <span class="lmt">${G.jackKind(l.card) === 'wild' ? 'wild jack → ' : '→ '}placed on <b>${cellLabel(l.cell)}</b> <i>(${posText(l.cell)})</i></span>`;
+    } else if (l.type === 'remove') {
+      txt = `${miniCard(l.card)} <span class="lmt">→ removed <b style="color:var(--t${l.victim})">${G.TEAM_NAMES[l.victim]}</b> chip from <b>${cellLabel(l.cell)}</b> <i>(${posText(l.cell)})</i></span>`;
+    } else if (l.type === 'swap') {
+      txt = `${miniCard(l.card)} <span class="lmt">♻ swapped a dead card</span>`;
+    } else txt = '<span class="lmt">passed (no moves)</span>';
+    return `<button class="lm" data-a="history">${who}${auto}${txt}</button>`;
+  }
+
   function renderGame() {
-    const v = V, me = v.you, myTurn = v.phase === 'playing' && v.turn === me;
-    const myTeam = me % v.teams;
-    const hand = v.hand;
+    const v = V, me = v.you, over = v.phase === 'over', myTurn = v.phase === 'playing' && v.turn === me;
+    const myTeam = me % v.teams, hand = v.hand;
+    if (selected !== null && hand[selected] !== selectedCard) selected = null;
     const selCard = selected !== null ? hand[selected] : null;
-    const hl = new Set(selCard ? G.legalCells(v, selCard, myTeam) : []);
+    const legal = new Set(selCard ? G.legalCells(v, selCard, myTeam) : []);
     const dead = hand.map((c) => G.isDead(v, c));
     const anyMove = G.hasAnyMove(v, hand, myTeam);
     const canSwap = myTurn && !v.exchanged && dead.some(Boolean);
     const canPass = myTurn && !anyMove && (v.exchanged || !dead.some(Boolean));
     const cur = v.players[v.turn];
+    const winCells = new Set();
+    if (over) v.seqs.filter((q) => q.team === v.winner).forEach((q) => q.cells.forEach((i) => winCells.add(i)));
 
     let cells = '';
     for (let i = 0; i < 100; i++) {
-      const c = G.BOARD[i];
-      const cls = ['cell'];
+      const c = G.BOARD[i], cls = ['cell'];
       let inner;
       if (c === 'F') { cls.push('free'); inner = '★'; }
       else {
         const s = G.suitOf(c); if (s === 'H' || s === 'D') cls.push('red');
-        inner = `<span>${G.rankOf(c)}</span><span class="su">${G.GLYPH[s]}</span>`;
+        inner = `<span class="rk">${G.rankOf(c)}</span><span class="su">${G.GLYPH[s]}</span>`;
       }
       const t = v.board[i];
-      if (t !== null) { cls.push('occ'); if (v.locked[i]) cls.push('locked'); inner += `<span class="chip t${t}">${['●', '◆', '▲'][t]}</span>`; }
-      if (hl.has(i)) cls.push('hl');
+      if (t !== null) { cls.push('occ'); if (v.locked[i]) cls.push('locked'); if (winCells.has(i)) cls.push('win'); inner += `<span class="chip t${t}">${['●', '◆', '▲'][t]}</span>`; }
+      if (legal.has(i)) cls.push(myTurn ? 'hl' : 'pv');
       if (v.last && v.last.cell === i) { cls.push('last'); if (v.last.type === 'remove') cls.push('lastrm'); }
       cells += `<button class="${cls.join(' ')}" data-a="cell" data-i="${i}" aria-label="${c}">${inner}</button>`;
     }
+    const xy = (k) => `${((k % 10) + 0.5) * 10}`, yy = (k) => `${(Math.floor(k / 10) + 0.5) * 10}`;
+    const lines = v.seqs.map((q) => {
+      const a = q.cells[0], b = q.cells[4], w = over && q.team === v.winner;
+      const co = `x1="${xy(a)}" y1="${yy(a)}" x2="${xy(b)}" y2="${yy(b)}"`;
+      return `<line class="sl-bg ${w ? 'w' : ''}" ${co}/><line class="sl-fg ${w ? 'w' : ''}" ${co}/>`;
+    }).join('');
 
     let main, mainCls = '';
-    if (v.phase === 'over') main = 'Game over';
+    const nSpots = legal.size;
+    if (over) main = `🏆 ${G.TEAM_NAMES[v.winner]} team wins!`;
     else if (myTurn) {
       mainCls = 'mine';
       if (!selCard) main = canPass ? 'No moves available — pass your turn' : '🎯 Your turn — pick a card';
-      else if (G.jackKind(selCard) === 'remove') main = hl.size ? 'Tap an enemy chip to remove it' : 'No chips to remove with this jack';
-      else if (G.jackKind(selCard) === 'wild') main = 'Wild! Tap any empty spot';
-      else if (dead[selected]) main = v.exchanged ? 'Dead card — already swapped this turn' : 'Dead card: both spots taken. Swap it!';
-      else main = 'Tap a highlighted spot';
-    } else main = `Waiting for ${esc(cur.name)}…`;
+      else if (G.jackKind(selCard) === 'remove') main = nSpots ? 'Tap an enemy chip to remove it' : 'No enemy chips to remove right now';
+      else if (G.jackKind(selCard) === 'wild') main = 'Wild jack! Tap any empty spot';
+      else if (dead[selected]) main = v.exchanged ? 'Dead card (already swapped this turn)' : 'Dead card — both spots taken. Swap it!';
+      else main = `Tap a glowing spot (${nSpots} available)`;
+    } else if (selCard) main = G.jackKind(selCard) === 'wild' ? 'Preview: wild jack can go anywhere' : G.jackKind(selCard) === 'remove' ? 'Preview: enemy chips you could remove' : dead[selected] ? 'Preview: this card is dead' : `Preview: ${G.fmt(selCard)} fits here — wait for your turn`;
+    else main = `⏳ ${esc(cur.name)}'s turn`;
+
+    const showTimer = v.phase === 'playing' && v.timer && deadlineAt !== null;
+    const left = showTimer ? Math.max(0, deadlineAt - Date.now()) : 0;
+    const pct = showTimer ? (left / (v.timer * 1000)) * 100 : 0;
 
     $app.innerHTML = `
       ${banner ? `<div class="banner">${esc(banner)}</div>` : ''}
       <div class="game">
         <div class="topbar">
           <div class="score">${v.seqCount.map((n, t) => `<div class="sc ${cur && cur.team === t && v.phase === 'playing' ? 'cur' : ''}"><span class="dot t${t}"></span>${G.TEAM_NAMES[t]} ${n}/${v.need}</div>`).join('')}</div>
+          ${over ? '<button class="iconbtn" data-a="result" aria-label="Result">🏆</button>' : ''}
           <button class="iconbtn" data-a="rules" aria-label="Rules">?</button>
           <button class="iconbtn" data-a="menu" aria-label="Menu">☰</button>
         </div>
         <div class="players">${v.players.map((p) => `<div class="pl t${p.team} ${p.seat === v.turn && v.phase === 'playing' ? 'turn' : ''} ${p.seat === me ? 'me' : ''}"><span class="dot"></span><b>${esc(p.name)}</b><span class="cnt">${p.cards}🂠</span><span class="${p.connected ? 'on' : 'off'}"></span></div>`).join('')}</div>
-        <div class="board ${selCard ? 'sel' : ''}">${cells}</div>
-        <div class="status"><div class="main ${mainCls}">${main}</div><div class="lg">${esc(v.log[v.log.length - 1] || '')}</div></div>
-        <div class="actions">
-          ${myTurn && selCard && dead[selected] && canSwap ? '<button class="btn primary" data-a="swap">♻ Swap dead card</button>' : ''}
-          ${canPass ? '<button class="btn" data-a="skip">Pass turn</button>' : ''}
-          ${myTurn && !selCard && canSwap ? '<button class="btn" data-a="swapany">♻ Swap dead card</button>' : ''}
+        <div class="board ${selCard ? 'sel' : ''}">${cells}<svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg></div>
+        <div class="status">
+          <div class="mainrow"><div class="main ${mainCls}">${main}</div>${showTimer ? `<span id="tsec" class="tsec ${left < 6000 ? 'low' : ''}">${Math.ceil(left / 1000)}s</span>` : ''}</div>
+          ${showTimer ? `<div class="tline"><div id="tbar" class="tbar ${myTurn ? 'mine' : ''} ${left < 6000 ? 'low' : ''}" style="width:${pct}%"></div></div>` : ''}
+          ${lastMoveHTML(v)}
         </div>
-        <div class="hand">${hand.map((c, i) => {
+        <div class="actions">
+          ${canSwap ? `<button class="btn ${selCard && dead[selected] ? 'primary' : ''}" data-a="${selCard && dead[selected] ? 'swap' : 'swapany'}">♻ Swap dead card</button>` : ''}
+          ${canPass ? '<button class="btn" data-a="skip">Pass turn</button>' : ''}
+        </div>
+        <div class="hand ${myTurn ? 'mine' : ''}">${hand.map((c, i) => {
           const s = G.suitOf(c), jk = G.jackKind(c);
-          const cls = ['hcard']; if (s === 'H' || s === 'D') cls.push('red'); if (i === selected) cls.push('sel'); if (dead[i]) cls.push('dead'); if (jk) cls.push('jack'); if (!myTurn) cls.push('dim');
-          return `<button class="${cls.join(' ')}" style="--n:${Math.max(hand.length, 5)}" data-a="pick" data-i="${i}"><span>${G.rankOf(c)}</span><span class="su">${G.GLYPH[s]}</span>${jk ? `<i class="tg">${jk === 'wild' ? 'WILD' : 'REMOVE'}</i>` : dead[i] ? '<i class="tg">DEAD</i>' : ''}</button>`;
+          const cls = ['hcard']; if (s === 'H' || s === 'D') cls.push('red'); if (i === selected) cls.push('sel'); if (dead[i]) cls.push('dead');
+          if (jk) cls.push('jack', jk);
+          const tag = jk ? (jk === 'wild' ? 'WILD' : 'REMOVE') : dead[i] ? 'DEAD' : '';
+          return `<button class="${cls.join(' ')}" style="--n:${Math.max(hand.length, 5)}" data-a="pick" data-i="${i}"><span class="ci"><b>${G.rankOf(c)}</b><u>${G.GLYPH[s]}</u></span><span class="big">${G.GLYPH[s]}</span>${tag ? `<i class="tg">${tag}</i>` : ''}</button>`;
         }).join('')}</div>
       </div>`;
   }
 
+  // smooth countdown without re-rendering the whole screen
+  setInterval(() => {
+    const bar = document.getElementById('tbar'), sec = document.getElementById('tsec');
+    if (!bar || !sec || !V || deadlineAt === null) return;
+    const left = Math.max(0, deadlineAt - Date.now());
+    bar.style.width = (left / (V.timer * 1000)) * 100 + '%';
+    sec.textContent = Math.ceil(left / 1000) + 's';
+    bar.classList.toggle('low', left < 6000); sec.classList.toggle('low', left < 6000);
+  }, 200);
+
   function showOver() {
-    if ($modal.dataset.kind === 'over') return;
+    if (overHidden || $modal.dataset.kind === 'over') return;
     const v = V, w = v.winner;
     const mine = w === v.you % v.teams;
     const ws = v.players.filter((p) => p.team === w).map((p) => esc(p.name)).join(' & ');
-    openModal(`<div class="mbox"><div class="big-emoji">${mine ? '🏆' : '🎉'}</div>
-      <div class="winner" style="color:var(--t${w})">${G.TEAM_NAMES[w]} team wins!</div>
-      <div class="note" style="text-align:center">${ws}</div>
-      ${v.isHost ? '<button class="btn primary" data-a="again">Play again (back to lobby)</button>' : '<div class="note" style="text-align:center">Waiting for the host to start a new game…</div>'}
-      <button class="btn" data-a="closemodal">Look at the board</button>
+    openModal(`<div class="mbox sheetbox"><div class="winner" style="color:var(--t${w})">${mine ? '🏆 You win!' : '🎉 ' + G.TEAM_NAMES[w] + ' team wins!'}</div>
+      <div class="note" style="text-align:center">${G.TEAM_NAMES[w]} team · ${ws} — winning line is highlighted on the board</div>
+      <div class="row">
+        <button class="btn" data-a="closemodal">Look at board</button>
+        ${v.isHost ? '<button class="btn primary" data-a="again">Play again</button>' : '<div class="note" style="text-align:center">Waiting for host…</div>'}
+      </div>
       <button class="link" data-a="leave">Leave room</button></div>`, 'over');
   }
 
@@ -457,8 +538,8 @@
     <li>Teams alternate: in 4 or 6 player games you sit alternately with teammates.</li></ul>
     <button class="btn primary" data-a="closemodal">Got it</button></div>`;
 
-  function openModal(html, kind) { $modal.innerHTML = html; $modal.dataset.kind = kind || ''; $modal.hidden = false; }
-  function closeModal() { $modal.hidden = true; $modal.innerHTML = ''; $modal.dataset.kind = ''; }
+  function openModal(html, kind) { $modal.innerHTML = html; $modal.dataset.kind = kind || ''; $modal.className = kind === 'over' ? 'sheet' : ''; $modal.hidden = false; }
+  function closeModal() { $modal.hidden = true; $modal.innerHTML = ''; $modal.dataset.kind = ''; $modal.className = ''; }
 
   // ---------- events ----------
   document.addEventListener('click', (e) => {
@@ -473,7 +554,9 @@
       case 'cancel': leaving = true; clearTimeout(openTimer); cleanupNet(); renderHome(); break;
       case 'retry': if (mode === 'host' && S) { $app.innerHTML = '<div class="screen"><h1>Opening room…</h1></div>'; openHostPeer(S.phase === 'lobby', 0); } else renderHome(); break;
       case 'rules': openModal(RULES, 'rules'); break;
-      case 'closemodal': closeModal(); break;
+      case 'closemodal': if ($modal.dataset.kind === 'over') overHidden = true; closeModal(); break;
+      case 'result': overHidden = false; showOver(); break;
+      case 'history': openModal(`<div class="mbox"><h2>Recent moves</h2><ul>${V.log.slice().reverse().map((l) => `<li>${esc(l)}</li>`).join('')}</ul><button class="btn primary" data-a="closemodal">Close</button></div>`, 'history'); break;
       case 'menu': openModal(`<div class="mbox"><h2>Menu</h2><div class="note">Room <b>${esc(V.room)}</b></div>
         <button class="btn" data-a="share">📤 Share invite link</button>
         <button class="btn" data-a="closemodal">Back to game</button>
@@ -482,22 +565,23 @@
       case 'copycode': copyText(V.room, 'Code copied'); break;
       case 'leave': if (!V || V.phase === 'lobby' || V.phase === 'over' || confirm('Leave the game? Others will keep playing' + (mode === 'host' ? ' only if you stay — the host closing ends the room.' : '.'))) leaveRoom(); break;
       case 'teams': act({ t: 'teams', n: +el.dataset.n }); break;
+      case 'timer': act({ t: 'timer', n: +el.dataset.n }); break;
       case 'kick': act({ t: 'kick', seat: i }); break;
       case 'start': act({ t: 'start' }); break;
       case 'again': closeModal(); act({ t: 'again' }); break;
       case 'pick': {
         if (!V || V.phase !== 'playing') break;
-        if (V.turn !== V.you) { toast("It's not your turn yet"); break; }
-        selected = selected === i ? null : i; render(); break;
+        selected = selected === i ? null : i; selectedCard = selected === null ? null : V.hand[selected]; render(); break;
       }
       case 'cell': {
-        if (selected === null || !V || V.turn !== V.you) break;
+        if (selected === null || !V || V.phase !== 'playing') break;
         const card = V.hand[selected];
-        if (!card) break;
-        if (G.legalCells(V, card, V.you % V.teams).includes(i)) { const idx = selected; selected = null; act({ t: 'play', idx, cell: i }); }
+        if (!card || !G.legalCells(V, card, V.you % V.teams).includes(i)) break;
+        if (V.turn !== V.you) { toast("Wait for your turn — this is only a preview"); break; }
+        const idx = selected; selected = null; selectedCard = null; act({ t: 'play', idx, cell: i });
         break;
       }
-      case 'swap': if (selected !== null) { const idx = selected; selected = null; act({ t: 'dead', idx }); } break;
+      case 'swap': if (selected !== null) { const idx = selected; selected = null; selectedCard = null; act({ t: 'dead', idx }); } break;
       case 'swapany': { const idx = V.hand.findIndex((c) => G.isDead(V, c)); if (idx >= 0) act({ t: 'dead', idx }); break; }
       case 'skip': act({ t: 'skip' }); break;
     }

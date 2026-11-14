@@ -9,6 +9,8 @@ it's a static site (GitHub Pages) and players connect **peer-to-peer** (WebRTC v
 3. Friends open the site, enter their name + code, tap **Join game**.
 4. Host picks **2 or 3 teams** and taps **Start**. 2–12 players (players must split evenly into teams).
 
+**Turn timer:** the host can set 20/30/45/60 seconds (or off) in the lobby; when time runs out a random legal move is played.
+
 **Rules in the app:** tap **?** for the quick rules. 2 teams need 2 sequences, 3 teams need 1. Two-eyed jacks are wild,
 one-eyed jacks remove an enemy chip, dead cards can be swapped once per turn, the ★ corners are free for everyone.
 

@@ -118,6 +118,21 @@ test('dead card swap once per turn; skip rules', () => {
   assert.strictEqual(S.turn, 0);
 });
 
+test('autoMove plays a legal move or passes, and records last', () => {
+  const S = lobby(2, 2); G.startGame(S, seeded(11));
+  const r = G.autoMove(S, seeded(3));
+  assert.ok(r.ok);
+  assert.strictEqual(S.turn, 1);
+  assert.ok(S.last && S.last.auto && S.last.type === 'place');
+  assert.strictEqual(S.deadline, null);
+  assert.ok(typeof G.view(S, 't0').timer === 'number');
+  // remove records victim
+  const T = lobby(2, 2); G.startGame(T, seeded(12));
+  T.board[30] = 1; T.hands.t0 = ['JH', 'AS', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  G.applyPlay(T, 't0', 0, 30, seeded(1));
+  assert.strictEqual(T.last.victim, 1);
+});
+
 test('view hides other hands', () => {
   const S = lobby(2, 2); G.startGame(S, seeded(10));
   const v = G.view(S, 't1', { t0: true });

@@ -108,7 +108,7 @@
 
   function newLobby(room, hostToken, hostName) {
     return {
-      phase: 'lobby', room, teams: 2, need: 2,
+      phase: 'lobby', room, teams: 2, need: 2, timer: 20, deadline: null,
       players: [{ token: hostToken, name: hostName }],
       board: Array(100).fill(null), locked: Array(100).fill(false), seqs: [],
       deck: [], discard: [], hands: {}, turn: 0, exchanged: false, last: null, winner: null, log: [],
@@ -129,7 +129,7 @@
     S.hands = {};
     for (const p of S.players) S.hands[p.token] = [];
     for (let i = 0; i < handSize(n); i++) for (const p of S.players) S.hands[p.token].push(S.deck.pop());
-    S.turn = 0; S.exchanged = false; S.last = null; S.winner = null; S.log = [];
+    S.turn = 0; S.exchanged = false; S.last = null; S.winner = null; S.log = []; S.deadline = null;
     S.phase = 'playing';
     log(S, 'Game started — good luck!');
     return { ok: true };
@@ -139,7 +139,7 @@
     if (!S.deck.length && S.discard.length) S.deck = shuffle(S.discard.splice(0), rng);
     return S.deck.pop();
   }
-  const advance = (S) => { S.turn = (S.turn + 1) % S.players.length; S.exchanged = false; };
+  const advance = (S) => { S.turn = (S.turn + 1) % S.players.length; S.exchanged = false; S.deadline = null; };
 
   function checkTurn(S, token) {
     if (S.phase !== 'playing') return err('Game is not in progress');
@@ -156,8 +156,9 @@
     if (!legalCells(S, card, team).includes(cell)) return err('That spot is not allowed for this card');
 
     if (jackKind(card) === 'remove') {
+      const victim = S.board[cell];
       S.board[cell] = null;
-      S.last = { seat, cell, type: 'remove', card };
+      S.last = { seat, cell, type: 'remove', card, victim };
       log(S, `${name} removed a chip with ${fmt(card)}`);
     } else {
       S.board[cell] = team;
@@ -193,6 +194,7 @@
     const next = draw(S, rng);
     if (next) hand.push(next);
     S.exchanged = true;
+    S.last = { seat: S.turn, cell: null, type: 'swap', card };
     log(S, `${S.players[S.turn].name} swapped a dead ${fmt(card)}`);
     return { ok: true };
   }
@@ -204,8 +206,34 @@
     if (hasAnyMove(S, hand, team)) return err('You still have a move');
     if (!S.exchanged && hand.some((c) => isDead(S, c))) return err('Swap your dead card first');
     log(S, `${S.players[S.turn].name} passed (no moves)`);
+    S.last = { seat: S.turn, cell: null, type: 'pass' };
     advance(S);
     return { ok: true };
+  }
+
+  // Turn timer ran out: swap a dead card if needed, then play a random legal move (or pass).
+  function autoMove(S, rng) {
+    if (S.phase !== 'playing') return err('Game is not in progress');
+    rng = rng || Math.random;
+    const seat = S.turn, p = S.players[seat], team = teamOf(S, seat), hand = S.hands[p.token];
+    if (!S.exchanged) {
+      const d = hand.findIndex((c) => isDead(S, c));
+      if (d >= 0) applyDead(S, p.token, d, rng);
+    }
+    const opts = [];
+    hand.forEach((c, i) => legalCells(S, c, team).forEach((cell) => opts.push([i, cell, c])));
+    if (!opts.length) {
+      const r = applySkip(S, p.token);
+      if (r.ok) { S.last.auto = true; S.log[S.log.length - 1] = `⏱ ${p.name} ran out of time and passed`; }
+      return r;
+    }
+    const plain = opts.filter((o) => !jackKind(o[2]));
+    const pool = plain.length ? plain : opts;
+    const [i, cell] = pool[Math.floor(rng() * pool.length)];
+    log(S, `⏱ ${p.name} ran out of time — auto-played`);
+    const r = applyPlay(S, p.token, i, cell, rng);
+    if (S.last) S.last.auto = true;
+    return r;
   }
 
   // What one player is allowed to see.
@@ -214,6 +242,7 @@
     const seat = seatOf(S, token);
     return {
       phase: S.phase, room: S.room, teams: S.teams, need: S.need,
+      timer: S.timer || 0, deadlineIn: S.deadline ? Math.max(0, S.deadline - Date.now()) : null,
       players: S.players.map((p, i) => ({
         name: p.name, seat: i, team: teamOf(S, i), connected: !!connected[p.token],
         cards: (S.hands[p.token] || []).length,
@@ -221,7 +250,7 @@
       board: S.board, locked: S.locked, seqs: S.seqs,
       seqCount: Array.from({ length: S.teams }, (_, t) => countSeqs(S, t)),
       turn: S.turn, exchanged: S.exchanged, last: S.last, winner: S.winner,
-      deckCount: S.deck.length, log: S.log.slice(-6),
+      deckCount: S.deck.length, log: S.log.slice(-12),
       you: seat, isHost: seat === 0, hand: (S.hands[token] || []).slice(),
     };
   }
@@ -230,6 +259,6 @@
     LAYOUT, BOARD, CORNERS, CARD_CELLS, TEAM_NAMES, GLYPH,
     suitOf, rankOf, fmt, jackKind, handSize, teamOf, makeDeck, shuffle,
     legalCells, isDead, hasAnyMove, detect, countSeqs,
-    newLobby, startGame, applyPlay, applyDead, applySkip, view, seatOf,
+    newLobby, startGame, applyPlay, applyDead, applySkip, autoMove, view, seatOf,
   };
 });
