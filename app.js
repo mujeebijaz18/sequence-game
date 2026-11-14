@@ -84,7 +84,7 @@
         ${hostSave ? `<button class="btn" data-a="resume-host">▶ Resume your hosted game (${esc(hostSave.room)})</button>` : ''}
         ${clientSave ? `<button class="btn" data-a="rejoin">↩ Rejoin game ${esc(clientSave.room)}</button>` : ''}
         <button class="link" data-a="rules">How to play</button>
-        <div class="note" style="text-align:center">version 4 · relay connection</div>
+        <div class="note" style="text-align:center">version 7 · relay connection</div>
       </div>`;
   }
   function readName() {

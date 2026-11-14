@@ -163,3 +163,28 @@ input:focus { border-color: var(--gold); }
 #modal.sheet .mbox { pointer-events: auto; max-width: 520px; box-shadow: 0 -6px 30px rgba(0,0,0,.6); border-color: var(--gold); }
 .sheetbox .winner { font-size: 24px; }
 .sc { white-space: nowrap; font-size: 12.5px; padding: 5px 2px; }
+
+/* ---- bigger board: phones use the full width, desktops get a two-column layout ---- */
+.game { padding-left: 2px; padding-right: 2px; }
+:root { --bs: min(calc(100vw - 4px), calc(100dvh - 372px), 720px); }
+@media (min-width: 900px) {
+  :root { --bs: min(calc(100dvh - 24px), calc(100vw - 500px), 1000px); }
+  .game { display: grid; grid-template-columns: var(--bs) minmax(320px, 440px); grid-template-rows: auto auto auto auto 1fr;
+    column-gap: 18px; row-gap: 8px; justify-content: center; align-content: center; align-items: start; padding: 12px; }
+  .game .board { grid-column: 1; grid-row: 1 / 7; }
+  .game .topbar, .game .players, .game .status, .game .actions, .game .hand { grid-column: 2; width: 100%; }
+  .game .players { flex-wrap: wrap; overflow: visible; }
+  .game .hand { margin-top: 0; align-self: end; justify-content: flex-start; flex-wrap: wrap; padding-top: 22px; gap: 8px; }
+  .game .hcard { width: 78px; }
+  .game .hcard .ci b { font-size: 24px; } .game .hcard .ci u { font-size: 17px; } .game .hcard .big { font-size: 42px; }
+  .game .status .main { font-size: 17px; }
+}
+
+/* ---- phones: edge-to-edge board with larger cells ---- */
+@media (max-width: 899px) {
+  :root { --bs: min(100vw, calc(100dvh - 372px), 720px); }
+  .game { padding: 4px 0 6px; gap: 5px; }
+  .game .board { border-radius: 0; border-width: 2px 0; padding: 2px; gap: 1.5px; }
+  .game .cell { border-radius: 3px; }
+  .game .topbar, .game .players, .game .status, .game .actions, .game .hand { padding-left: 6px; padding-right: 6px; }
+}
