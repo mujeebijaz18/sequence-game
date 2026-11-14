@@ -133,6 +133,19 @@ test('autoMove plays a legal move or passes, and records last', () => {
   assert.strictEqual(T.last.victim, 1);
 });
 
+test('four-in-a-row flag and move counter', () => {
+  const S = lobby(2, 2); G.startGame(S, seeded(21));
+  [40, 41, 42].forEach((i) => (S.board[i] = 0));
+  S.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  assert.ok(G.applyPlay(S, 't0', 0, 43, seeded(1)).ok);
+  assert.strictEqual(S.last.four, true);
+  assert.strictEqual(S.last.n, 1);
+  const T = lobby(2, 2); G.startGame(T, seeded(22));
+  T.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  G.applyPlay(T, 't0', 0, 55, seeded(1));
+  assert.ok(!T.last.four);
+});
+
 test('view hides other hands', () => {
   const S = lobby(2, 2); G.startGame(S, seeded(10));
   const v = G.view(S, 't1', { t0: true });

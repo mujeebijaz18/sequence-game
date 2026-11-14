@@ -99,6 +99,24 @@
     }
     return found;
   }
+  // "Four of five": the move at `cell` leaves a window of 5 with 4 team chips (free corners count) and 1 empty spot.
+  function hasFour(S, cell, team) {
+    const r0 = Math.floor(cell / 10), c0 = cell % 10;
+    for (const [dr, dc] of DIRS) {
+      for (let k = 0; k < 5; k++) {
+        let own = 0, empty = 0, ok = true;
+        for (let j = 0; j < 5; j++) {
+          const r = r0 + dr * (j - k), c = c0 + dc * (j - k);
+          if (r < 0 || r > 9 || c < 0 || c > 9) { ok = false; break; }
+          const i = r * 10 + c;
+          if (CORNERS.includes(i) || S.board[i] === team) own++;
+          else if (S.board[i] === null) empty++;
+        }
+        if (ok && own === 4 && empty === 1) return true;
+      }
+    }
+    return false;
+  }
   const countSeqs = (S, team) => S.seqs.filter((s) => s.team === team).length;
 
   // ---- game flow ----
@@ -167,7 +185,9 @@
       log(S, `${name} played ${what}`);
       const made = detect(S, cell, team);
       if (made.length) log(S, `${TEAM_NAMES[team]} made ${made.length > 1 ? made.length + ' sequences' : 'a sequence'}!`);
+      else if (hasFour(S, cell, team)) S.last.four = true;
     }
+    S.moveNo = (S.moveNo || 0) + 1; S.last.n = S.moveNo;
     hand.splice(idx, 1);
     S.discard.push(card);
 
@@ -194,7 +214,8 @@
     const next = draw(S, rng);
     if (next) hand.push(next);
     S.exchanged = true;
-    S.last = { seat: S.turn, cell: null, type: 'swap', card };
+    S.moveNo = (S.moveNo || 0) + 1;
+    S.last = { seat: S.turn, cell: null, type: 'swap', card, n: S.moveNo };
     log(S, `${S.players[S.turn].name} swapped a dead ${fmt(card)}`);
     return { ok: true };
   }
@@ -206,7 +227,8 @@
     if (hasAnyMove(S, hand, team)) return err('You still have a move');
     if (!S.exchanged && hand.some((c) => isDead(S, c))) return err('Swap your dead card first');
     log(S, `${S.players[S.turn].name} passed (no moves)`);
-    S.last = { seat: S.turn, cell: null, type: 'pass' };
+    S.moveNo = (S.moveNo || 0) + 1;
+    S.last = { seat: S.turn, cell: null, type: 'pass', n: S.moveNo };
     advance(S);
     return { ok: true };
   }

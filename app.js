@@ -63,6 +63,8 @@
   let deadlineAt = null;    // local clock time when the current turn ends
   let turnTimer = null;     // host only
   let overHidden = false;
+  let lastEventN = null;    // last move number we already reacted to
+  let warnKey = '';         // turn we already showed the "hurry" popup for
 
   // ---------- HOME ----------
   function renderHome(msg) {
@@ -84,7 +86,7 @@
         ${hostSave ? `<button class="btn" data-a="resume-host">▶ Resume your hosted game (${esc(hostSave.room)})</button>` : ''}
         ${clientSave ? `<button class="btn" data-a="rejoin">↩ Rejoin game ${esc(clientSave.room)}</button>` : ''}
         <button class="link" data-a="rules">How to play</button>
-        <div class="note" style="text-align:center">version 7 · relay connection</div>
+        <div class="note" style="text-align:center">version 8 · popups + taller board</div>
       </div>`;
   }
   function readName() {
@@ -333,7 +335,7 @@
     clearTimeout(reconnectTimer); clearTimeout(connectTimeout);
     try { peer && peer.destroy(); } catch (e) { /* ignore */ }
     clearTimeout(turnTimer);
-    peer = null; hostConn = null; conns = {}; connected = {}; V = null; selected = null; selectedCard = null; deadlineAt = null; banner = '';
+    peer = null; hostConn = null; conns = {}; connected = {}; V = null; selected = null; selectedCard = null; deadlineAt = null; lastEventN = null; warnKey = ''; banner = '';
     closeModal();
     document.title = 'Sequence Online';
   }
@@ -347,6 +349,32 @@
     renderHome();
   }
 
+  // ---------- fun popups ----------
+  const $popup = document.getElementById('popup');
+  const popQ = []; let popBusy = false;
+  function pop(text, kind) {
+    if (popQ.length >= 3) return;
+    popQ.push({ text, kind });
+    if (!popBusy) nextPop();
+  }
+  function nextPop() {
+    const it = popQ.shift();
+    if (!it) { popBusy = false; return; }
+    popBusy = true;
+    const st = document.querySelector('.status');
+    if (st) { const r = st.getBoundingClientRect(); $popup.style.left = r.left + r.width / 2 + 'px'; $popup.style.top = Math.max(70, r.top - 4) + 'px'; }
+    else { $popup.style.left = '50%'; $popup.style.top = '45%'; }
+    $popup.className = ''; void $popup.offsetWidth;          // restart the animation
+    $popup.textContent = it.text; $popup.className = 'show ' + it.kind;
+    setTimeout(() => { $popup.className = ''; setTimeout(nextPop, 120); }, 1800);
+  }
+  function eventPopups(l) {
+    const jk = l.card ? G.jackKind(l.card) : null;
+    if (l.type === 'remove') pop('Aao na abb!!', 'remove');
+    else if (l.type === 'place' && jk === 'wild') pop('Han g!', 'wild');
+    if (l.four) pop('Bare Taiz ho Rahe Ho', 'four');
+  }
+
   // ---------- view handling ----------
   function onView(v) {
     const mineNow = v.phase === 'playing' && v.turn === v.you;
@@ -354,6 +382,10 @@
     prevTurnMine = mineNow;
     if (selected !== null && v.hand[selected] !== selectedCard) selected = null;
     deadlineAt = v.phase === 'playing' && v.timer && v.deadlineIn !== null ? Date.now() + v.deadlineIn : null;
+    if (v.last && v.last.n !== undefined) {
+      if (lastEventN !== null && v.last.n > lastEventN && v.phase === 'playing') eventPopups(v.last);
+      lastEventN = v.last.n;
+    } else if (!v.last) lastEventN = lastEventN === null ? 0 : lastEventN;
     V = v;
     document.title = mineNow ? '● Your turn — Sequence' : 'Sequence Online';
     render();
@@ -522,6 +554,14 @@
 
   // smooth countdown without re-rendering the whole screen
   setInterval(() => {
+    if (V && V.phase === 'playing' && deadlineAt !== null) {
+      const l0 = deadlineAt - Date.now();
+      const key = V.turn + ':' + (V.last ? V.last.n : 0);
+      if (l0 < 10000 && l0 > 700 && warnKey !== key) {
+        warnKey = key; pop('Jaldi karo Bhai!', 'hurry');
+        if (V.turn === V.you) { try { navigator.vibrate && navigator.vibrate(150); } catch (e) { /* ignore */ } }
+      }
+    }
     const bar = document.getElementById('tbar'), sec = document.getElementById('tsec');
     if (!bar || !sec || !V || deadlineAt === null) return;
     const left = Math.max(0, deadlineAt - Date.now());

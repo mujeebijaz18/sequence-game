@@ -1,7 +1,8 @@
+@font-face { font-family: "Bangers"; src: url("fonts/bangers.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 :root {
   --bg: #0f2a1f; --felt: #14402e; --felt2: #1b5740; --card: #f7f1e1; --ink: #1d1d1f; --red: #c62828;
   --t0: #2f6fed; --t1: #22a45d; --t2: #e0463b; --gold: #f5c542; --muted: #9db8aa;
-  --bs: min(calc(100vw - 12px), calc(100dvh - 372px), 720px);
+  --bw: min(calc(100vw - 12px), calc(100dvh - 372px), 720px);
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: #fff; overscroll-behavior: none;
@@ -49,20 +50,20 @@ input:focus { border-color: var(--gold); }
 
 /* ---------- game ---------- */
 .game { height: 100dvh; display: flex; flex-direction: column; align-items: center; padding: 6px 6px 8px; gap: 6px; }
-.topbar { width: var(--bs); display: flex; align-items: center; gap: 6px; }
+.topbar { width: var(--bw); display: flex; align-items: center; gap: 6px; }
 .score { flex: 1; display: flex; gap: 6px; }
 .sc { flex: 1; text-align: center; padding: 5px 4px; border-radius: 10px; background: #0c2218; border: 2px solid transparent; font-size: 13px; font-weight: 650; }
 .sc.cur { border-color: var(--gold); }
 .sc .dot { display: inline-block; vertical-align: -1px; margin-right: 4px; width: 10px; height: 10px; }
 .iconbtn { width: 38px; height: 38px; border-radius: 10px; border: 1px solid #2b5a45; background: var(--felt); font-weight: 700; flex: none; }
-.players { width: var(--bs); display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.players { width: var(--bw); display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .players::-webkit-scrollbar { display: none; }
 .pl { flex: none; display: flex; align-items: center; gap: 5px; padding: 3px 9px; background: #0c2218; border-radius: 999px; font-size: 12.5px; border: 2px solid transparent; white-space: nowrap; }
 .pl.turn { border-color: var(--gold); }
 .pl.me b::after { content: " (you)"; font-weight: 400; color: var(--muted); }
 .pl .cnt { color: var(--muted); }
 
-.board { width: var(--bs); height: var(--bs); display: grid; grid-template: repeat(10, 1fr) / repeat(10, 1fr); gap: 2px; padding: 3px;
+.board { width: var(--bw); height: var(--bw); display: grid; grid-template: repeat(10, 1fr) / repeat(10, 1fr); gap: 2px; padding: 3px;
   background: var(--felt); border-radius: 10px; border: 2px solid #2b5a45; flex: none; container-type: size; }
 .cell { position: relative; padding: 0; border: 0; border-radius: 4px; background: var(--card); color: var(--ink); display: flex; flex-direction: column;
   align-items: center; justify-content: center; line-height: 1; font-weight: 700; overflow: hidden; min-width: 0; font-size: clamp(8px, 3.3cqw, 20px); }
@@ -94,7 +95,7 @@ input:focus { border-color: var(--gold); }
 #toast.show { opacity: 1; transform: translateX(-50%); }
 .banner { position: fixed; top: 0; left: 0; right: 0; background: #b3541e; text-align: center; padding: 6px; font-size: 13px; z-index: 40; padding-top: calc(6px + env(safe-area-inset-top)); }
 
-@media (min-width: 900px) { :root { --bs: min(calc(100dvh - 372px), 720px); } }
+@media (min-width: 900px) { :root { --bw: min(calc(100dvh - 372px), 720px); } }
 
 /* =============== v2: clearer cards, last move, timer, winner line =============== */
 .board { position: relative; }
@@ -118,7 +119,7 @@ input:focus { border-color: var(--gold); }
 .cell.win .chip { animation: bounce .9s ease-in-out infinite alternate; box-shadow: 0 0 0 3px #fff, 0 0 14px 4px var(--gold); }
 @keyframes bounce { to { transform: scale(1.12); } }
 
-.status { width: var(--bs); display: flex; flex-direction: column; gap: 4px; }
+.status { width: var(--bw); display: flex; flex-direction: column; gap: 4px; }
 .mainrow { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 24px; }
 .status .main { font-weight: 750; font-size: 15px; text-align: center; }
 .status .main.mine { color: var(--gold); }
@@ -137,12 +138,12 @@ input:focus { border-color: var(--gold); }
 .mini.red { color: var(--red); }
 .mini.jack { background: #f5e3a0; }
 
-.actions { width: var(--bs); display: flex; gap: 8px; justify-content: center; min-height: 40px; align-items: center; }
+.actions { width: var(--bw); display: flex; gap: 8px; justify-content: center; min-height: 40px; align-items: center; }
 .actions .btn { padding: 8px 14px; font-size: 14px; width: auto; flex: 1; max-width: 240px; }
 
-.hand { width: var(--bs); display: flex; justify-content: center; gap: 6px; padding: 10px 4px 6px; margin-top: auto; border-radius: 14px; border: 2px solid transparent; }
+.hand { width: var(--bw); display: flex; justify-content: center; gap: 6px; padding: 10px 4px 6px; margin-top: auto; border-radius: 14px; border: 2px solid transparent; }
 .hand.mine { border-color: rgba(245,197,66,.55); background: rgba(245,197,66,.08); box-shadow: 0 0 14px rgba(245,197,66,.25); }
-.hcard { --n: 7; width: clamp(44px, calc((var(--bs) - 14px - 6px * var(--n)) / var(--n)), 70px); aspect-ratio: 5 / 7.3; border-radius: 9px; border: 2px solid #b9b199;
+.hcard { --n: 7; width: clamp(44px, calc((var(--bw) - 14px - 6px * var(--n)) / var(--n)), 70px); aspect-ratio: 5 / 7.3; border-radius: 9px; border: 2px solid #b9b199;
   background: linear-gradient(#fffdf5, #f1e9d0); color: var(--ink); position: relative; padding: 0; transition: transform .12s, box-shadow .12s; box-shadow: 0 2px 5px rgba(0,0,0,.4); }
 .hcard.red { color: var(--red); }
 .hcard .ci { position: absolute; top: 3px; left: 4px; display: flex; flex-direction: column; align-items: center; line-height: 1; }
@@ -166,10 +167,10 @@ input:focus { border-color: var(--gold); }
 
 /* ---- bigger board: phones use the full width, desktops get a two-column layout ---- */
 .game { padding-left: 2px; padding-right: 2px; }
-:root { --bs: min(calc(100vw - 4px), calc(100dvh - 372px), 720px); }
+:root { --bw: min(calc(100vw - 4px), calc(100dvh - 372px), 720px); }
 @media (min-width: 900px) {
-  :root { --bs: min(calc(100dvh - 24px), calc(100vw - 500px), 1000px); }
-  .game { display: grid; grid-template-columns: var(--bs) minmax(320px, 440px); grid-template-rows: auto auto auto auto 1fr;
+  :root { --bw: min(calc(100dvh - 24px), calc(100vw - 500px), 1000px); }
+  .game { display: grid; grid-template-columns: var(--bw) minmax(320px, 440px); grid-template-rows: auto auto auto auto 1fr;
     column-gap: 18px; row-gap: 8px; justify-content: center; align-content: center; align-items: start; padding: 12px; }
   .game .board { grid-column: 1; grid-row: 1 / 7; }
   .game .topbar, .game .players, .game .status, .game .actions, .game .hand { grid-column: 2; width: 100%; }
@@ -182,9 +183,33 @@ input:focus { border-color: var(--gold); }
 
 /* ---- phones: edge-to-edge board with larger cells ---- */
 @media (max-width: 899px) {
-  :root { --bs: min(100vw, calc(100dvh - 372px), 720px); }
+  :root { --bw: min(100vw, calc(100dvh - 372px), 720px); }
   .game { padding: 4px 0 6px; gap: 5px; }
   .game .board { border-radius: 0; border-width: 2px 0; padding: 2px; gap: 1.5px; }
   .game .cell { border-radius: 3px; }
   .game .topbar, .game .players, .game .status, .game .actions, .game .hand { padding-left: 6px; padding-right: 6px; }
 }
+
+/* ---- v8: taller (portrait) cells like the design, and fun popups ---- */
+:root { --bw: min(100vw, 720px); --bh: min(calc(var(--bw) * 1.2308), calc(100dvh - 352px)); }
+.board { width: var(--bw); height: var(--bh); }
+.cell { font-size: clamp(9px, min(4.4cqw, 3.4cqh), 26px); }
+.cell .su { font-size: 1.1em; margin-top: 2px; }
+@media (min-width: 900px) {
+  :root { --bw: min(calc(100dvh - 24px), calc(100vw - 500px), 1000px); --bh: var(--bw); }
+}
+#popup { position: fixed; z-index: 80; pointer-events: none; transform: translate(-50%, -100%); text-align: center; opacity: 0;
+  font-family: 'Bangers', 'Luckiest Guy', Impact, 'Arial Black', cursive; font-size: clamp(36px, 11vw, 64px); line-height: 1; letter-spacing: 2px;
+  max-width: 94vw; white-space: normal; color: #ffd24a; -webkit-text-stroke: 2.5px #1a1200; paint-order: stroke fill;
+  text-shadow: 0 5px 0 rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.6); }
+#popup.show { animation: popin 1.8s ease forwards; }
+#popup.hurry { color: #ff5a4d; } #popup.remove { color: #ff7ad9; } #popup.wild { color: #7dff9b; } #popup.four { color: #ffd24a; }
+@keyframes popin {
+  0% { opacity: 0; transform: translate(-50%, -80%) rotate(-10deg) scale(.2); }
+  12% { opacity: 1; transform: translate(-50%, -100%) rotate(-4deg) scale(1.25); }
+  22% { transform: translate(-50%, -100%) rotate(-4deg) scale(1); }
+  50% { transform: translate(-50%, -104%) rotate(-3deg) scale(1.05); }
+  85% { opacity: 1; transform: translate(-50%, -100%) rotate(-4deg) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -125%) rotate(-4deg) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) { #popup.show { animation: popfade 1.8s linear forwards; } @keyframes popfade { 0%, 90% { opacity: 1; } 100% { opacity: 0; } } }
