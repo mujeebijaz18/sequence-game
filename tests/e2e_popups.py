@@ -37,7 +37,7 @@ with sync_playwright() as p:
     guest.wait_for_function("document.getElementById('popup').textContent.includes('Aao')", timeout=4000)
     print('remove ->', popup(guest)); host.wait_for_timeout(2300)
     # 4) four chips of five -> "Bare Taiz ho Rahe Ho"
-    host.evaluate("""(() => { const S=window.__seq; const st=S.S; [80,81,82].forEach(i=>{st.board[i]=0}); st.turn=0; st.exchanged=false; st.hands[st.players[0].token][2]='JC'; S.rebroadcast(); })()""")
+    host.evaluate("""(() => { const S=window.__seq; const st=S.S; [80,81,82].forEach(i=>{st.board[i]=0}); st.seqs.push({team:0,cells:[1,2,3,4,5]}); st.turn=0; st.exchanged=false; st.hands[st.players[0].token][2]='JC'; S.rebroadcast(); })()""")
     host.click('.hcard[data-i="2"]'); host.click('.cell.hl[data-i="83"]')
     guest.wait_for_function("document.getElementById('popup').textContent.includes('Bare Taiz')", timeout=4000)
     print('four ->', popup(guest)); guest.screenshot(path='/tmp/v8_four.png')

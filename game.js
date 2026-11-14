@@ -99,20 +99,23 @@
     }
     return found;
   }
-  // "Four of five": the move at `cell` leaves a window of 5 with 4 team chips (free corners count) and 1 empty spot.
+  // "One chip from winning": the move at `cell` leaves a window of 5 with 4 team chips (free corners count) and 1 empty spot,
+  // and filling that spot would be enough to win the game (team already has need-1 sequences).
   function hasFour(S, cell, team) {
+    if (countSeqs(S, team) + 1 < S.need) return false;
     const r0 = Math.floor(cell / 10), c0 = cell % 10;
     for (const [dr, dc] of DIRS) {
       for (let k = 0; k < 5; k++) {
-        let own = 0, empty = 0, ok = true;
+        let own = 0, empty = 0, shared = 0, ok = true;
         for (let j = 0; j < 5; j++) {
           const r = r0 + dr * (j - k), c = c0 + dc * (j - k);
           if (r < 0 || r > 9 || c < 0 || c > 9) { ok = false; break; }
           const i = r * 10 + c;
-          if (CORNERS.includes(i) || S.board[i] === team) own++;
+          if (CORNERS.includes(i)) own++;
+          else if (S.board[i] === team) { own++; if (S.locked[i]) shared++; }
           else if (S.board[i] === null) empty++;
         }
-        if (ok && own === 4 && empty === 1) return true;
+        if (ok && own === 4 && empty === 1 && shared <= 1) return true;
       }
     }
     return false;

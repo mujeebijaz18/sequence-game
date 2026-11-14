@@ -86,7 +86,7 @@
         ${hostSave ? `<button class="btn" data-a="resume-host">▶ Resume your hosted game (${esc(hostSave.room)})</button>` : ''}
         ${clientSave ? `<button class="btn" data-a="rejoin">↩ Rejoin game ${esc(clientSave.room)}</button>` : ''}
         <button class="link" data-a="rules">How to play</button>
-        <div class="note" style="text-align:center">version 8 · popups + taller board</div>
+        <div class="note" style="text-align:center">version 9 · popups: one chip from winning</div>
       </div>`;
   }
   function readName() {

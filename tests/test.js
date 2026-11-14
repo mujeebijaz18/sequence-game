@@ -133,17 +133,38 @@ test('autoMove plays a legal move or passes, and records last', () => {
   assert.strictEqual(T.last.victim, 1);
 });
 
-test('four-in-a-row flag and move counter', () => {
-  const S = lobby(2, 2); G.startGame(S, seeded(21));
+test('"one chip from winning" flag and move counter', () => {
+  // 3 teams: one sequence wins, so any four-of-five counts (corner chips count as owned)
+  const S = lobby(3, 3); G.startGame(S, seeded(21));
   [40, 41, 42].forEach((i) => (S.board[i] = 0));
-  S.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  S.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS'];
   assert.ok(G.applyPlay(S, 't0', 0, 43, seeded(1)).ok);
   assert.strictEqual(S.last.four, true);
   assert.strictEqual(S.last.n, 1);
+  // corner case: corner + 3 chips = four
+  const C = lobby(3, 3); G.startGame(C, seeded(23));
+  [1, 2].forEach((i) => (C.board[i] = 0));
+  C.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  G.applyPlay(C, 't0', 0, 3, seeded(1));
+  assert.strictEqual(C.last.four, true);
+  // 2 teams need 2 sequences: a four does NOT warn while the team has no sequence yet...
   const T = lobby(2, 2); G.startGame(T, seeded(22));
+  [40, 41, 42].forEach((i) => (T.board[i] = 0));
   T.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS', 'AS'];
-  G.applyPlay(T, 't0', 0, 55, seeded(1));
+  G.applyPlay(T, 't0', 0, 43, seeded(1));
   assert.ok(!T.last.four);
+  // ...but does once the team already owns one sequence
+  const U = lobby(2, 2); G.startGame(U, seeded(24));
+  [50, 51, 52, 53, 54].forEach((i) => { U.board[i] = 0; U.locked[i] = true; }); U.seqs.push({ team: 0, cells: [50, 51, 52, 53, 54] });
+  [40, 41, 42].forEach((i) => (U.board[i] = 0));
+  U.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  G.applyPlay(U, 't0', 0, 43, seeded(1));
+  assert.strictEqual(U.last.four, true);
+  // a random far-away chip never warns
+  const V = lobby(3, 3); G.startGame(V, seeded(25));
+  V.hands.t0 = ['JD', 'AS', 'AS', 'AS', 'AS', 'AS'];
+  G.applyPlay(V, 't0', 0, 55, seeded(1));
+  assert.ok(!V.last.four);
 });
 
 test('view hides other hands', () => {
