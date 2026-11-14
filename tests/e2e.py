@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 import subprocess, time, atexit
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BROKER_PORT = 18830
-_env = dict(os.environ, NODE_PATH=os.environ.get('NODE_PATH', '/home/claude/broker/node_modules'))
+_env = dict(os.environ, NODE_PATH='/home/claude/broker/node_modules:' + os.environ.get('NODE_PATH', ''))
 _broker = subprocess.Popen(['node', os.path.join(ROOT, 'tests', 'broker.js'), str(BROKER_PORT)], env=_env, stdout=subprocess.PIPE)
 _broker.stdout.readline(); atexit.register(_broker.kill)
 BROKER_JS = f"window.SEQ_BROKERS=['ws://127.0.0.1:{BROKER_PORT}'];"
