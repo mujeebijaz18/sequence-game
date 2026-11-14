@@ -164,6 +164,7 @@
       }
       if (conns[token] && conns[token] !== conn) { try { conns[token].close(); } catch (e) { /* ignore */ } }
       conns[token] = conn; connected[token] = true;
+      autoTeams();
       refreshView(true);
       return;
     }
@@ -171,6 +172,15 @@
     if (!token) return;
     const res = hostAction(token, m);
     if (res && !res.ok && res.error) conn.send({ t: 'toast', msg: res.error });
+  }
+
+  // keep the team count valid as players come and go (3 players -> 3 solo teams)
+  function autoTeams() {
+    if (!S || S.phase !== 'lobby') return;
+    const n = S.players.length;
+    if (n % S.teams === 0) return;
+    const other = S.teams === 2 ? 3 : 2;
+    if (n % other === 0) S.teams = other;
   }
 
   // all state changes (host's own and remote players') go through here
@@ -206,7 +216,7 @@
         break;
       default: return { ok: false, error: 'Unknown action' };
     }
-    if (res.ok) { saveHost(); broadcast(); }
+    if (res.ok) { autoTeams(); saveHost(); broadcast(); }
     return res;
   }
 
@@ -322,7 +332,7 @@
     let hint = '';
     if (n < 2) hint = 'Waiting for at least one more player…';
     else if (!okTeams) hint = `${n} players can't split into ${v.teams} equal teams — ${v.teams === 2 ? 'try 3 teams or ' : ''}wait for ${v.teams === 2 ? 'an even number' : 'a multiple of 3'}.`;
-    else hint = `${n} players · ${v.teams} teams of ${n / v.teams} · first to ${v.teams === 2 ? '2 sequences' : '1 sequence'} wins`;
+    else hint = `${n} players · ${v.teams} teams${n === v.teams ? ' (everyone plays solo)' : ' of ' + n / v.teams} · first to ${v.teams === 2 ? '2 sequences' : '1 sequence'} wins`;
     $app.innerHTML = `
       ${banner ? `<div class="banner">${esc(banner)}</div>` : ''}
       <div class="screen">
