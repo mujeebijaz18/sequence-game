@@ -179,3 +179,12 @@ input:focus { border-color: var(--gold); }
   .game .hcard .ci b { font-size: 24px; } .game .hcard .ci u { font-size: 17px; } .game .hcard .big { font-size: 42px; }
   .game .status .main { font-size: 17px; }
 }
+
+/* ---- phones: edge-to-edge board with larger cells ---- */
+@media (max-width: 899px) {
+  :root { --bs: min(100vw, calc(100dvh - 372px), 720px); }
+  .game { padding: 4px 0 6px; gap: 5px; }
+  .game .board { border-radius: 0; border-width: 2px 0; padding: 2px; gap: 1.5px; }
+  .game .cell { border-radius: 3px; }
+  .game .topbar, .game .players, .game .status, .game .actions, .game .hand { padding-left: 6px; padding-right: 6px; }
+}
