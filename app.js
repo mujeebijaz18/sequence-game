@@ -114,12 +114,25 @@
     openHostPeer(!resumeSave, 0);
   }
 
+  let openTimer, lastPeerErr = '';
+  function netFail(extra) {
+    $app.innerHTML = `<div class="screen"><h1>Can't connect</h1>
+      <p class="sub">The game couldn't reach the matchmaking server (peerjs.com).</p>
+      <div class="card-box note">Error: ${esc(lastPeerErr || 'timed out')}${extra ? '<br>' + esc(extra) : ''}<br><br>
+      Try: turn off ad-blocker / privacy extensions for this site, disconnect VPN, try an Incognito window, or switch between Wi-Fi and mobile data.</div>
+      <button class="btn primary" data-a="retry">Try again</button>
+      <button class="link" data-a="cancel">Back</button></div>`;
+  }
   function openHostPeer(canRetryCode, attempt) {
     const p = newPeer(PEER_PREFIX + room);
-    p.on('open', () => { S.room = room; saveHost(); refreshView(); });
+    clearTimeout(openTimer); lastPeerErr = '';
+    openTimer = setTimeout(() => { if (!p.open && !leaving) netFail(); }, 12000);
+    p.on('open', () => { clearTimeout(openTimer); S.room = room; saveHost(); refreshView(); });
     p.on('connection', onHostConnection);
     p.on('disconnected', () => { if (!leaving && peer === p) setTimeout(() => { try { p.reconnect(); } catch (e) { /* ignore */ } }, 1500); });
     p.on('error', (e) => {
+      lastPeerErr = (e.type || '') + ' ' + (e.message || '');
+      if (!p.open && e.type !== 'unavailable-id') { clearTimeout(openTimer); netFail(); return; }
       if (e.type === 'unavailable-id') {
         if (canRetryCode && attempt < 5) { room = rnd(5); S.room = room; openHostPeer(true, attempt + 1); }
         else { toast('That room is still open somewhere else. Close the other tab and try again.'); renderHome('Room code is in use — close other tabs of this game, then try again.'); }
@@ -447,7 +460,8 @@
       case 'join': startJoining(document.getElementById('code').value); break;
       case 'resume-host': { const s = store.get('seq_host'); if (s) { myName = (s.state.players[0] || {}).name || myName; startHosting(s); } break; }
       case 'rejoin': { const s = store.get('seq_client'); if (s) startJoining(s.room, s); break; }
-      case 'cancel': leaving = true; cleanupNet(); renderHome(); break;
+      case 'cancel': leaving = true; clearTimeout(openTimer); cleanupNet(); renderHome(); break;
+      case 'retry': if (mode === 'host' && S) { $app.innerHTML = '<div class="screen"><h1>Opening room…</h1></div>'; openHostPeer(S.phase === 'lobby', 0); } else renderHome(); break;
       case 'rules': openModal(RULES, 'rules'); break;
       case 'closemodal': closeModal(); break;
       case 'menu': openModal(`<div class="mbox"><h2>Menu</h2><div class="note">Room <b>${esc(V.room)}</b></div>
