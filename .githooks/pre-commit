@@ -1,0 +1,4 @@
+#!/bin/sh
+# stamp a fresh build id so browsers fetch the new files after every commit
+date +%s > version.txt
+git add version.txt
