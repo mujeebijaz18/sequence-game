@@ -8,7 +8,7 @@
   const $modal = document.getElementById('modal');
 
   const PEER_PREFIX = 'seqgame-';
-  const PEER_OPTS = {
+  const PEER_OPTS = {  // (unused by the relay transport; kept for compatibility)
     debug: 1,
     config: {
       iceServers: [
@@ -84,7 +84,7 @@
         ${hostSave ? `<button class="btn" data-a="resume-host">▶ Resume your hosted game (${esc(hostSave.room)})</button>` : ''}
         ${clientSave ? `<button class="btn" data-a="rejoin">↩ Rejoin game ${esc(clientSave.room)}</button>` : ''}
         <button class="link" data-a="rules">How to play</button>
-        <div class="note" style="text-align:center">version 3 · timer + last-move + winner line</div>
+        <div class="note" style="text-align:center">version 4 · relay connection</div>
       </div>`;
   }
   function readName() {
@@ -124,7 +124,7 @@
   let openTimer, lastPeerErr = '', netTry = 0;
   function netFail(extra) {
     $app.innerHTML = `<div class="screen"><h1>Can't connect</h1>
-      <p class="sub">The game couldn't reach the matchmaking server (peerjs.com).</p>
+      <p class="sub">The game couldn't reach the relay server.</p>
       <div class="card-box note">Error: ${esc(lastPeerErr || 'timed out')}${extra ? '<br>' + esc(extra) : ''}<br><br>
       Try: turn off ad-blocker / privacy extensions for this site, disconnect VPN, try an Incognito window, or switch between Wi-Fi and mobile data.</div>
       <button class="btn primary" data-a="retry">Try again</button>
@@ -186,6 +186,7 @@
     }
     const token = Object.keys(conns).find((t) => conns[t] === conn);
     if (!token) return;
+    if (m.t === 'ping') { conn.send({ t: 'state', v: G.view(S, token, connected) }); return; }
     const res = hostAction(token, m);
     if (res && !res.ok && res.error) conn.send({ t: 'toast', msg: res.error });
   }
@@ -309,9 +310,15 @@
     banner = 'Connection lost — reconnecting…'; if (V) render();
     clearTimeout(reconnectTimer); reconnectTimer = setTimeout(clientConnect, 2500);
   }
+  let lastStateAt = 0;
+  setInterval(() => { // heartbeat: ask for a fresh snapshot, and reconnect if we've gone quiet
+    if (mode !== 'client' || leaving || !gotState) return;
+    if (hostConn && hostConn.open) { try { hostConn.send({ t: 'ping' }); } catch (e) { /* ignore */ } }
+    if (Date.now() - lastStateAt > 45000) { lastStateAt = Date.now(); clientConnect(); }
+  }, 15000);
   function clientHandle(m) {
     if (!m) return;
-    if (m.t === 'state') { gotState = true; banner = ''; store.set('seq_client', { room, token: myToken, name: myName }); onView(m.v); }
+    if (m.t === 'state') { lastStateAt = Date.now(); gotState = true; banner = ''; store.set('seq_client', { room, token: myToken, name: myName }); onView(m.v); }
     else if (m.t === 'toast') toast(m.msg);
     else if (m.t === 'fatal') { leaving = true; cleanupNet(); store.del('seq_client'); renderHome(m.msg); }
   }

@@ -3,31 +3,14 @@
 import http.server, threading, socketserver, os, random, sys, functools
 from playwright.sync_api import sync_playwright
 
+import subprocess, time, atexit
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FAKE_PEER = r"""
-(function(){
-  const bc = new BroadcastChannel('fakepeer'); const peers = {}; let n = 0;
-  class Conn { constructor(peer, remote, id, initiator){ this.peer=peer; this.peerId=remote; this.id=id; this.open=false; this.h={}; peer._conns[id]=this; }
-    on(e,f){ (this.h[e]=this.h[e]||[]).push(f); return this; }
-    emit(e,a){ (this.h[e]||[]).forEach(f=>f(a)); }
-    send(d){ bc.postMessage({k:'data',to:this.peerId,from:this.peer.id,cid:this.id,d:JSON.parse(JSON.stringify(d))}); }
-    close(){ if(!this.open) return; this.open=false; bc.postMessage({k:'close',to:this.peerId,from:this.peer.id,cid:this.id}); this.emit('close'); } }
-  window.Peer = class {
-    constructor(id,opts){ if(id && typeof id==='object'){ id=null; } this.id = id || ('anon'+(++n)+Math.random().toString(36).slice(2,6)); this.h={}; this._conns={}; this.disconnected=false;
-      peers[this.id]=this; setTimeout(()=>this.emit('open',this.id),30);
-      this.cb = (ev)=>{ const m=ev.data; if(m.to!==this.id) return;
-        if(m.k==='hello'){ const c=new Conn(this,m.from,m.cid); c.open=true; bc.postMessage({k:'accept',to:m.from,from:this.id,cid:m.cid}); this.emit('connection',c); setTimeout(()=>c.emit('open'),0); }
-        else if(m.k==='accept'){ const c=this._conns[m.cid]; if(c){ c.open=true; clearTimeout(c.t); c.emit('open'); } }
-        else if(m.k==='data'){ const c=this._conns[m.cid]; if(c) c.emit('data',m.d); }
-        else if(m.k==='close'){ const c=this._conns[m.cid]; if(c&&c.open){ c.open=false; c.emit('close'); } } };
-      bc.addEventListener('message',this.cb); }
-    on(e,f){ (this.h[e]=this.h[e]||[]).push(f); return this; }
-    emit(e,a){ (this.h[e]||[]).forEach(f=>f(a)); }
-    connect(remote){ const cid='c'+Math.random().toString(36).slice(2); const c=new Conn(this,remote,cid); c.t=setTimeout(()=>this.emit('error',{type:'peer-unavailable'}),600); bc.postMessage({k:'hello',to:remote,from:this.id,cid}); return c; }
-    reconnect(){} destroy(){ bc.removeEventListener('message',this.cb); Object.values(this._conns).forEach(c=>c.close()); }
-  };
-})();
-"""
+BROKER_PORT = 18830
+_env = dict(os.environ, NODE_PATH=os.environ.get('NODE_PATH', '/home/claude/broker/node_modules'))
+_broker = subprocess.Popen(['node', os.path.join(ROOT, 'tests', 'broker.js'), str(BROKER_PORT)], env=_env, stdout=subprocess.PIPE)
+_broker.stdout.readline(); atexit.register(_broker.kill)
+BROKER_JS = f"window.SEQ_BROKERS=['ws://127.0.0.1:{BROKER_PORT}'];"
+
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*a): pass
@@ -43,7 +26,7 @@ def main():
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
         ctx = b.new_context(viewport={'width':390,'height':844}, device_scale_factor=2, is_mobile=True, has_touch=True)
-        ctx.route('**/vendor/peerjs.min.js', lambda r: r.fulfill(body=FAKE_PEER, content_type='application/javascript'))
+        ctx.add_init_script(BROKER_JS)
         pages = []
         for i in range(3):
             pg = ctx.new_page(); pg.on('pageerror', lambda e, i=i: errors.append((i, str(e)))); pg.on('console', lambda m, i=i: errors.append((i, m.text)) if m.type=='error' else None)

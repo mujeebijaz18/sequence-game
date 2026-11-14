@@ -7,7 +7,7 @@ srv, port = serve(); url = f'http://127.0.0.1:{port}/index.html'; errors = []
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
     ctx = b.new_context(viewport={'width':390,'height':844}, device_scale_factor=2, is_mobile=True, has_touch=True)
-    ctx.route('**/vendor/peerjs.min.js', lambda r: r.fulfill(body=FAKE_PEER, content_type='application/javascript'))
+    ctx.add_init_script(BROKER_JS)
     pages = []
     for i in range(2):
         pg = ctx.new_page(); pg.on('pageerror', lambda e: errors.append(str(e))); pg.goto(url); pages.append(pg)
