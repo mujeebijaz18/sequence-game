@@ -1,0 +1,7 @@
+{
+  "name": "sequence-online",
+  "version": "1.0.0",
+  "description": "Sequence board/card game you can play online with friends — static site, peer-to-peer via WebRTC.",
+  "scripts": { "test": "node tests/test.js", "start": "python3 -m http.server 8000" },
+  "license": "MIT"
+}
