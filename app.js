@@ -115,12 +115,12 @@
     } else {
       room = rnd(5); S = G.newLobby(room, myToken, name);
     }
-    connected = { [myToken]: true }; conns = {};
+    connected = { [myToken]: true }; conns = {}; netTry = 0;
     $app.innerHTML = '<div class="screen"><h1>Opening room…</h1></div>';
     openHostPeer(!resumeSave, 0);
   }
 
-  let openTimer, lastPeerErr = '';
+  let openTimer, lastPeerErr = '', netTry = 0;
   function netFail(extra) {
     $app.innerHTML = `<div class="screen"><h1>Can't connect</h1>
       <p class="sub">The game couldn't reach the matchmaking server (peerjs.com).</p>
@@ -132,13 +132,22 @@
   function openHostPeer(canRetryCode, attempt) {
     const p = newPeer(PEER_PREFIX + room);
     clearTimeout(openTimer); lastPeerErr = '';
-    openTimer = setTimeout(() => { if (!p.open && !leaving) netFail(); }, 12000);
-    p.on('open', () => { clearTimeout(openTimer); S.room = room; armTimer(); saveHost(); refreshView(); });
+    const retry = () => {
+      clearTimeout(openTimer);
+      if (leaving || peer !== p) return;
+      if (netTry < 5) {
+        netTry++;
+        $app.innerHTML = `<div class="screen"><h1>Connecting…</h1><p class="sub">Matchmaking server is slow — retrying (${netTry}/5)</p><button class="link" data-a="cancel">Cancel</button></div>`;
+        setTimeout(() => { if (!leaving && peer === p) openHostPeer(canRetryCode, attempt); }, 1500);
+      } else netFail();
+    };
+    openTimer = setTimeout(() => { if (!p.open && !leaving) retry(); }, 10000);
+    p.on('open', () => { clearTimeout(openTimer); netTry = 0; S.room = room; armTimer(); saveHost(); refreshView(); });
     p.on('connection', onHostConnection);
     p.on('disconnected', () => { if (!leaving && peer === p) setTimeout(() => { try { p.reconnect(); } catch (e) { /* ignore */ } }, 1500); });
     p.on('error', (e) => {
       lastPeerErr = (e.type || '') + ' ' + (e.message || '');
-      if (!p.open && e.type !== 'unavailable-id') { clearTimeout(openTimer); netFail(); return; }
+      if (!p.open && e.type !== 'unavailable-id') { retry(); return; }
       if (e.type === 'unavailable-id') {
         if (canRetryCode && attempt < 5) { room = rnd(5); S.room = room; openHostPeer(true, attempt + 1); }
         else { toast('That room is still open somewhere else. Close the other tab and try again.'); renderHome('Room code is in use — close other tabs of this game, then try again.'); }
@@ -552,7 +561,7 @@
       case 'resume-host': { const s = store.get('seq_host'); if (s) { myName = (s.state.players[0] || {}).name || myName; startHosting(s); } break; }
       case 'rejoin': { const s = store.get('seq_client'); if (s) startJoining(s.room, s); break; }
       case 'cancel': leaving = true; clearTimeout(openTimer); cleanupNet(); renderHome(); break;
-      case 'retry': if (mode === 'host' && S) { $app.innerHTML = '<div class="screen"><h1>Opening room…</h1></div>'; openHostPeer(S.phase === 'lobby', 0); } else renderHome(); break;
+      case 'retry': if (mode === 'host' && S) { netTry = 0; $app.innerHTML = '<div class="screen"><h1>Opening room…</h1></div>'; openHostPeer(S.phase === 'lobby', 0); } else renderHome(); break;
       case 'rules': openModal(RULES, 'rules'); break;
       case 'closemodal': if ($modal.dataset.kind === 'over') overHidden = true; closeModal(); break;
       case 'result': overHidden = false; showOver(); break;
